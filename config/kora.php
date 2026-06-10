@@ -37,7 +37,7 @@ return [
 
     'webhook_secret'         => env('KORA_WEBHOOK_SECRET', ''),
     'webhook_path'           => env('KORA_WEBHOOK_PATH', 'webhooks/kora'),
-    'register_webhook_route' => env('KORA_REGISTER_ROUTE', true),
+    'register_webhook_route' => env('KORA_REGISTER_ROUTE', false),
 
     /*
     |--------------------------------------------------------------------------

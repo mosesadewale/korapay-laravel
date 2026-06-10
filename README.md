@@ -1,6 +1,6 @@
 # kora-laravel
 
-Laravel integration for the [Kora PHP SDK](https://github.com/mosesadewale/kora-php). Provides a service provider, facade, and a full webhook pipeline with typed Laravel events.
+Laravel integration for the [Kora PHP SDK](https://github.com/mosesadewale/kora-php). Provides a service provider, facade, and an optional verified webhook receiver.
 
 ## Requirements
 
@@ -42,7 +42,7 @@ return [
     'environment'            => env('KORA_ENVIRONMENT', 'live'),
     'webhook_secret'         => env('KORA_WEBHOOK_SECRET', ''),
     'webhook_path'           => env('KORA_WEBHOOK_PATH', 'webhooks/kora'),
-    'register_webhook_route' => env('KORA_REGISTER_ROUTE', true),
+    'register_webhook_route' => env('KORA_REGISTER_ROUTE', false),
     'timeout'                => (float) env('KORA_TIMEOUT', 30),
     'retry_attempts'         => (int)   env('KORA_RETRY_ATTEMPTS', 3),
 ];
@@ -88,60 +88,49 @@ See the [kora-php README](https://github.com/mosesadewale/kora-php) for full met
 
 ## Webhooks
 
-### Automatic route
+### Optional route
 
-By default the package registers `POST webhooks/kora` with signature verification middleware applied. The route is registered outside Laravel's `web` middleware group — no CSRF exemption is needed.
+The package can register `POST webhooks/kora` with signature verification middleware applied, but the route is disabled by default so installing the package does not expose a public endpoint unexpectedly.
 
-> If you set `KORA_REGISTER_ROUTE=false` and add the route yourself in `routes/web.php`, exclude it from CSRF protection in your app's `VerifyCsrfToken` middleware (Laravel 10) or `bootstrap/app.php` (Laravel 11+).
+Enable it when you want the package-managed receiver:
 
-### Laravel events
+```env
+KORA_REGISTER_ROUTE=true
+KORA_WEBHOOK_PATH=webhooks/kora
+```
 
-When a valid webhook arrives the controller dispatches a typed event. Listen for them anywhere in your application:
+The route is registered outside Laravel's `web` middleware group, so no CSRF exemption is needed.
+
+### Laravel event
+
+When a valid webhook arrives, the controller dispatches one generic event:
 
 ```php
-use Kora\Laravel\Events\KoraChargeSucceeded;
-use Kora\Laravel\Events\KoraPayoutSucceeded;
-use Kora\Laravel\Events\KoraRefundSucceeded;
+use Illuminate\Support\Facades\Event;
+use Kora\Laravel\Events\KoraWebhookReceived;
+use Kora\Sdk\Enums\WebhookEventType;
 
-// AppServiceProvider::boot() or EventServiceProvider
-Event::listen(KoraChargeSucceeded::class, function (KoraChargeSucceeded $e) {
-    Order::where('payment_reference', $e->event->data['reference'])
-         ->update(['status' => 'paid']);
-});
-
-Event::listen(KoraPayoutSucceeded::class, function (KoraPayoutSucceeded $e) {
-    Payout::where('reference', $e->event->data['reference'])
-           ->update(['status' => 'completed']);
-});
-
-Event::listen(KoraRefundSucceeded::class, function (KoraRefundSucceeded $e) {
-    Order::where('refund_reference', $e->event->data['reference'])
-          ->update(['status' => 'refunded']);
+Event::listen(KoraWebhookReceived::class, function (KoraWebhookReceived $e) {
+    match (WebhookEventType::tryFrom($e->event->type)) {
+        WebhookEventType::ChargeSuccess => ProcessSuccessfulCharge::dispatch($e->event->data),
+        WebhookEventType::PayoutSuccess => ProcessSuccessfulPayout::dispatch($e->event->data),
+        WebhookEventType::RefundSuccess => ProcessSuccessfulRefund::dispatch($e->event->data),
+        default => null,
+    };
 });
 ```
 
-**All dispatched events:**
+Your application owns business processing, idempotency, queueing, and event-specific jobs/listeners.
 
-| Event class | Kora event |
-|---|---|
-| `KoraChargeSucceeded` | `charge.success` |
-| `KoraChargeFailed` | `charge.failed` |
-| `KoraPayoutSucceeded` | `transfer.success` |
-| `KoraPayoutFailed` | `transfer.failed` |
-| `KoraRefundSucceeded` | `refund.success` |
-| `KoraRefundFailed` | `refund.failed` |
-| `KoraChargebackCreated` | `chargeback.created` |
-| `KoraChargebackWon` | `chargeback.won` |
-| `KoraChargebackLost` | `chargeback.lost` |
-
-Each event carries a `WebhookEvent $event` property:
+Each `KoraWebhookReceived` event carries a `WebhookEvent $event` property:
 
 ```php
-$e->event->type;             // WebhookEventType enum case (or null for unknown types)
-$e->event->event;            // raw event string e.g. "charge.success"
+$e->event->type;            // raw event string e.g. "charge.success"
 $e->event->data;             // array — the full data payload from Kora
 $e->event->data['reference'] // the transaction reference
 ```
+
+Unknown future Kora event strings are still dispatched through `KoraWebhookReceived`; use `$e->event->type` when you need the raw provider value.
 
 ### Custom webhook route
 
@@ -160,7 +149,7 @@ Route::post('webhooks/kora', function (Request $request) {
     }
 
     $event = Kora::webhooks()->parse($raw);
-    // handle $event manually
+    // dispatch your own event/job or handle $event manually
     return response()->json(['received' => true]);
 });
 ```
@@ -193,32 +182,35 @@ try {
 
 ## Testing
 
-Swap the HTTP client for `FakeHttpClient` in tests — no network calls, full assertion surface:
+Bind a mock against `KoraClientInterface` in your test — no network calls, no real credentials:
 
 ```php
-use Kora\Laravel\Facades\Kora;
-use Kora\Sdk\Enums\Environment;
-use Kora\Sdk\Factory;
-use Kora\Sdk\Support\KoraConfig;
-use Kora\Sdk\Tests\Fakes\FakeHttpClient;
+use Kora\Sdk\Contracts\KoraClientInterface;
+use Kora\Sdk\DTOs\ChargeResponse;
+use Kora\Sdk\Resources\ChargesResource;
 
-// In a test or ServiceProvider override
-$http = new FakeHttpClient(['data' => ['reference' => 'ref_001', 'status' => 'success', 'checkout_url' => 'https://pay.korapay.com/xxx']]);
+$charges = $this->createMock(ChargesResource::class);
+$charges->method('charge')->willReturn(ChargeResponse::fromArray([
+    'reference'    => 'ref_001',
+    'status'       => 'pending',
+    'amount'       => 5000,
+    'currency'     => 'NGN',
+    'checkout_url' => 'https://pay.korahq.com/checkout/ref_001',
+]));
 
-$this->app->instance(
-    \Kora\Sdk\Contracts\KoraClientInterface::class,
-    Factory::withClient($http, new KoraConfig(secretKey: 'sk_test_key', environment: Environment::Sandbox)),
-);
+$kora = $this->createMock(KoraClientInterface::class);
+$kora->method('charges')->willReturn($charges);
 
-$response = Kora::charges()->charge([...]);
-self::assertSame('ref_001', $response->reference);
+$this->app->instance(KoraClientInterface::class, $kora);
+
+// Kora facade and injected KoraClientInterface now use the mock
 ```
 
 For webhook controller tests, use `Event::fake()` and post a signed payload:
 
 ```php
 use Illuminate\Support\Facades\Event;
-use Kora\Laravel\Events\KoraChargeSucceeded;
+use Kora\Laravel\Events\KoraWebhookReceived;
 
 Event::fake();
 
@@ -232,8 +224,9 @@ $this->call('POST', config('kora.webhook_path'), [], [], [], [
     'CONTENT_TYPE'             => 'application/json',
 ], $payload)->assertStatus(200);
 
-Event::assertDispatched(KoraChargeSucceeded::class, function (KoraChargeSucceeded $e) {
-    return $e->event->data['reference'] === 'ref_001';
+Event::assertDispatched(KoraWebhookReceived::class, function (KoraWebhookReceived $e) {
+    return $e->event->type === 'charge.success'
+        && $e->event->data['reference'] === 'ref_001';
 });
 ```
 

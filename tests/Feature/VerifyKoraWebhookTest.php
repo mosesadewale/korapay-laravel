@@ -11,6 +11,13 @@ final class VerifyKoraWebhookTest extends TestCase
 {
     private const SECRET = 'test_webhook_secret';
 
+    protected function defineEnvironment($app): void
+    {
+        parent::defineEnvironment($app);
+
+        $app['config']->set('kora.register_webhook_route', true);
+    }
+
     /** @param array<string, mixed> $data */
     private function sign(array $data): string
     {

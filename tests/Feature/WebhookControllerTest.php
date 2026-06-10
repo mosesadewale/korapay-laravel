@@ -5,21 +5,22 @@ declare(strict_types=1);
 namespace Kora\Laravel\Tests\Feature;
 
 use Illuminate\Support\Facades\Event;
-use Kora\Laravel\Events\KoraChargeFailed;
-use Kora\Laravel\Events\KoraChargeSucceeded;
-use Kora\Laravel\Events\KoraChargebackCreated;
-use Kora\Laravel\Events\KoraChargebackLost;
-use Kora\Laravel\Events\KoraChargebackWon;
-use Kora\Laravel\Events\KoraPayoutFailed;
-use Kora\Laravel\Events\KoraPayoutSucceeded;
-use Kora\Laravel\Events\KoraRefundFailed;
-use Kora\Laravel\Events\KoraRefundSucceeded;
+use Illuminate\Testing\TestResponse;
+use Kora\Laravel\Events\KoraWebhookReceived;
 use Kora\Laravel\Tests\TestCase;
+use Kora\Sdk\Enums\WebhookEventType;
 use PHPUnit\Framework\Attributes\Test;
 
 final class WebhookControllerTest extends TestCase
 {
     private const SECRET = 'test_webhook_secret';
+
+    protected function defineEnvironment($app): void
+    {
+        parent::defineEnvironment($app);
+
+        $app['config']->set('kora.register_webhook_route', true);
+    }
 
     /** @param array<string, mixed> $data */
     private function sign(array $data): string
@@ -27,7 +28,7 @@ final class WebhookControllerTest extends TestCase
         return hash_hmac('sha256', json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), self::SECRET);
     }
 
-    private function webhook(string $eventType, string $reference = 'ref_001'): \Illuminate\Testing\TestResponse
+    private function webhook(string $eventType, string $reference = 'ref_001'): TestResponse
     {
         $data    = ['reference' => $reference, 'status' => 'success'];
         $payload = json_encode(['event' => $eventType, 'data' => $data], JSON_THROW_ON_ERROR);
@@ -40,110 +41,29 @@ final class WebhookControllerTest extends TestCase
     }
 
     #[Test]
-    public function charge_success_dispatches_kora_charge_succeeded(): void
+    public function known_event_dispatches_kora_webhook_received(): void
     {
         Event::fake();
 
         $this->webhook('charge.success', 'ref_001')->assertStatus(200);
 
-        Event::assertDispatched(KoraChargeSucceeded::class, function (KoraChargeSucceeded $e) {
-            return $e->event->data['reference'] === 'ref_001';
+        Event::assertDispatched(KoraWebhookReceived::class, function (KoraWebhookReceived $e): bool {
+            return $e->event->type === WebhookEventType::ChargeSuccess->value
+                && $e->event->data['reference'] === 'ref_001';
         });
     }
 
     #[Test]
-    public function charge_failed_dispatches_kora_charge_failed(): void
+    public function unknown_event_type_still_dispatches_kora_webhook_received(): void
     {
         Event::fake();
 
-        $this->webhook('charge.failed')->assertStatus(200);
+        $this->webhook('some.future.event', 'ref_future')->assertStatus(200);
 
-        Event::assertDispatched(KoraChargeFailed::class);
-    }
-
-    #[Test]
-    public function transfer_success_dispatches_kora_payout_succeeded(): void
-    {
-        Event::fake();
-
-        $this->webhook('transfer.success')->assertStatus(200);
-
-        Event::assertDispatched(KoraPayoutSucceeded::class);
-    }
-
-    #[Test]
-    public function transfer_failed_dispatches_kora_payout_failed(): void
-    {
-        Event::fake();
-
-        $this->webhook('transfer.failed')->assertStatus(200);
-
-        Event::assertDispatched(KoraPayoutFailed::class);
-    }
-
-    #[Test]
-    public function refund_success_dispatches_kora_refund_succeeded(): void
-    {
-        Event::fake();
-
-        $this->webhook('refund.success')->assertStatus(200);
-
-        Event::assertDispatched(KoraRefundSucceeded::class);
-    }
-
-    #[Test]
-    public function refund_failed_dispatches_kora_refund_failed(): void
-    {
-        Event::fake();
-
-        $this->webhook('refund.failed')->assertStatus(200);
-
-        Event::assertDispatched(KoraRefundFailed::class);
-    }
-
-    #[Test]
-    public function unknown_event_type_returns_200_without_dispatching(): void
-    {
-        Event::fake([
-            KoraChargeSucceeded::class, KoraChargeFailed::class,
-            KoraPayoutSucceeded::class, KoraPayoutFailed::class,
-            KoraRefundSucceeded::class, KoraRefundFailed::class,
-            KoraChargebackCreated::class, KoraChargebackWon::class, KoraChargebackLost::class,
-        ]);
-
-        $this->webhook('some.future.event')->assertStatus(200);
-
-        Event::assertNothingDispatched();
-    }
-
-    #[Test]
-    public function chargeback_created_dispatches_kora_chargeback_created(): void
-    {
-        Event::fake();
-
-        $this->webhook('chargeback.created')->assertStatus(200);
-
-        Event::assertDispatched(KoraChargebackCreated::class);
-    }
-
-    #[Test]
-    public function chargeback_won_dispatches_kora_chargeback_won(): void
-    {
-        Event::fake();
-
-        $this->webhook('chargeback.won')->assertStatus(200);
-
-        Event::assertDispatched(KoraChargebackWon::class);
-    }
-
-    #[Test]
-    public function chargeback_lost_dispatches_kora_chargeback_lost(): void
-    {
-        Event::fake();
-
-        $this->webhook('chargeback.lost')->assertStatus(200);
-
-        Event::assertDispatched(KoraChargebackLost::class);
+        Event::assertDispatched(KoraWebhookReceived::class, function (KoraWebhookReceived $e): bool {
+            return $e->event->type === 'some.future.event'
+                && $e->event->reference === 'ref_future';
+        });
     }
 
     #[Test]

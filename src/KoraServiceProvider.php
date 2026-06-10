@@ -37,7 +37,7 @@ class KoraServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        if (config('kora.register_webhook_route', true)) {
+        if (config('kora.register_webhook_route', false)) {
             $this->loadRoutesFrom(__DIR__ . '/../routes/webhooks.php');
         }
 

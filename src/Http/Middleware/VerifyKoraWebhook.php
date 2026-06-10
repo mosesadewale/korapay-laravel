@@ -9,7 +9,7 @@ use Illuminate\Http\Request;
 use Kora\Sdk\Contracts\KoraClientInterface;
 use Symfony\Component\HttpFoundation\Response;
 
-class VerifyKoraWebhook
+final class VerifyKoraWebhook
 {
     public function __construct(private readonly KoraClientInterface $kora) {}
 

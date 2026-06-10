@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kora\Laravel\Tests\Feature;
 
+use Illuminate\Support\Facades\Route;
 use Kora\Laravel\Tests\TestCase;
 use Kora\Sdk\Contracts\KoraClientInterface;
 use Kora\Sdk\KoraClient;
@@ -35,12 +36,8 @@ final class ServiceProviderTest extends TestCase
     }
 
     #[Test]
-    public function webhook_route_is_registered_by_default(): void
+    public function webhook_route_is_not_registered_by_default(): void
     {
-        $routes = collect($this->app['router']->getRoutes()->getRoutes())
-            ->map(fn ($r) => $r->uri());
-
-        self::assertTrue($routes->contains(config('kora.webhook_path')));
+        self::assertFalse(Route::has('kora.webhook'));
     }
-
 }
