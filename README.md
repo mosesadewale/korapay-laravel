@@ -5,7 +5,7 @@ Laravel integration for the [Kora PHP SDK](https://github.com/mosesadewale/kora-
 ## Requirements
 
 - PHP 8.2+
-- Laravel 10, 11, or 12
+- Laravel 10, 11, 12, or 13
 - [mosesadewale/kora-php](https://github.com/mosesadewale/kora-php) ^1.0
 
 ## Installation
