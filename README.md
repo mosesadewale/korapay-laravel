@@ -6,7 +6,7 @@ Laravel integration for the [Kora PHP SDK](https://github.com/mosesadewale/kora-
 
 - PHP 8.2+
 - Laravel 10, 11, 12, or 13
-- [mosesadewale/kora-php](https://github.com/mosesadewale/kora-php) ^1.0
+- [mosesadewale/kora-php](https://github.com/mosesadewale/kora-php) ^2.0
 
 ## Installation
 
@@ -29,9 +29,9 @@ Then add to your `.env`:
 ```env
 KORA_SECRET_KEY=sk_live_...
 KORA_ENCRYPTION_KEY=...        # required for card payments (32 bytes)
-KORA_WEBHOOK_SECRET=wh_...
-KORA_ENVIRONMENT=live          # live or sandbox
 ```
+
+`KORA_ENVIRONMENT` is optional. When omitted, the package infers the environment from `KORA_SECRET_KEY`.
 
 Full config reference (`config/kora.php`):
 
@@ -39,8 +39,7 @@ Full config reference (`config/kora.php`):
 return [
     'secret_key'             => env('KORA_SECRET_KEY', ''),
     'encryption_key'         => env('KORA_ENCRYPTION_KEY', ''),
-    'environment'            => env('KORA_ENVIRONMENT', 'live'),
-    'webhook_secret'         => env('KORA_WEBHOOK_SECRET', ''),
+    'environment'            => env('KORA_ENVIRONMENT'),
     'webhook_path'           => env('KORA_WEBHOOK_PATH', 'webhooks/kora'),
     'register_webhook_route' => env('KORA_REGISTER_ROUTE', false),
     'timeout'                => (float) env('KORA_TIMEOUT', 30),
@@ -48,7 +47,7 @@ return [
 ];
 ```
 
-> `sk_live_` keys must be used with `KORA_ENVIRONMENT=live`; `sk_test_` keys with `KORA_ENVIRONMENT=sandbox`. A mismatch throws `InvalidArgumentException` at boot time.
+If you want to be explicit, set `KORA_ENVIRONMENT=live` or `KORA_ENVIRONMENT=sandbox`. A mismatch with the key prefix throws `InvalidArgumentException` at boot time.
 
 ## Usage
 
@@ -87,6 +86,8 @@ Kora::webhooks()       // WebhookResource
 See the [kora-php README](https://github.com/mosesadewale/kora-php) for full method signatures and usage examples for each resource.
 
 ## Webhooks
+
+Kora signs webhooks with your API `secret_key`.
 
 ### Optional route
 
@@ -214,7 +215,7 @@ use Kora\Laravel\Events\KoraWebhookReceived;
 
 Event::fake();
 
-$secret  = config('kora.webhook_secret');
+$secret  = config('kora.secret_key');
 $data    = ['reference' => 'ref_001', 'status' => 'success'];
 $payload = json_encode(['event' => 'charge.success', 'data' => $data]);
 $sig     = hash_hmac('sha256', json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), $secret);

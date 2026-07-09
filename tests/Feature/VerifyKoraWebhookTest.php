@@ -9,7 +9,7 @@ use PHPUnit\Framework\Attributes\Test;
 
 final class VerifyKoraWebhookTest extends TestCase
 {
-    private const SECRET = 'test_webhook_secret';
+    private const SECRET = 'sk_test_webhook_signing_key';
 
     protected function defineEnvironment($app): void
     {
@@ -74,4 +74,5 @@ final class VerifyKoraWebhookTest extends TestCase
 
         $response->assertStatus(401);
     }
+
 }

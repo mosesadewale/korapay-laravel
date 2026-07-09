@@ -20,12 +20,14 @@ class KoraServiceProvider extends ServiceProvider
         $this->app->singleton(KoraClientInterface::class, function ($app): KoraClient {
             $config = $app['config']['kora'];
             $logger = $app->make(LoggerInterface::class);
+            $environment = is_string($config['environment'] ?? null) && $config['environment'] !== ''
+                ? Environment::from($config['environment'])
+                : null;
 
             return Factory::make(
                 secretKey:      $config['secret_key'],
                 encryptionKey:  $config['encryption_key'],
-                webhookSecret:  $config['webhook_secret'],
-                environment:    Environment::from($config['environment']),
+                environment:    $environment,
                 timeout:        (float) $config['timeout'],
                 retryAttempts:  (int)   $config['retry_attempts'],
                 logger:         $logger,

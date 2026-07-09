@@ -13,7 +13,7 @@ use PHPUnit\Framework\Attributes\Test;
 
 final class WebhookControllerTest extends TestCase
 {
-    private const SECRET = 'test_webhook_secret';
+    private const SECRET = 'sk_test_webhook_signing_key';
 
     protected function defineEnvironment($app): void
     {

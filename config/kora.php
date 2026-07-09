@@ -21,7 +21,7 @@ return [
     |--------------------------------------------------------------------------
     */
 
-    'environment' => env('KORA_ENVIRONMENT', 'live'),
+    'environment' => env('KORA_ENVIRONMENT'),
 
     /*
     |--------------------------------------------------------------------------
@@ -35,7 +35,6 @@ return [
     |--------------------------------------------------------------------------
     */
 
-    'webhook_secret'         => env('KORA_WEBHOOK_SECRET', ''),
     'webhook_path'           => env('KORA_WEBHOOK_PATH', 'webhooks/kora'),
     'register_webhook_route' => env('KORA_REGISTER_ROUTE', false),
 

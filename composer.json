@@ -6,7 +6,7 @@
     "keywords": ["korapay", "kora", "payments", "africa", "sdk", "laravel"],
     "require": {
         "php": "^8.2",
-        "mosesadewale/kora-php": "^1.0",
+        "mosesadewale/kora-php": "^2.0",
         "illuminate/contracts": "^10.0|^11.0|^12.0|^13.0",
         "illuminate/http": "^10.0|^11.0|^12.0|^13.0",
         "illuminate/routing": "^10.0|^11.0|^12.0|^13.0",

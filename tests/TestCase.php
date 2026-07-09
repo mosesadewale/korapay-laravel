@@ -16,9 +16,8 @@ abstract class TestCase extends OrchestraTestCase
 
     protected function defineEnvironment($app): void
     {
-        $app['config']->set('kora.secret_key', 'sk_test_testfakekey');
+        $app['config']->set('kora.secret_key', 'sk_test_webhook_signing_key');
         $app['config']->set('kora.environment', 'sandbox');
-        $app['config']->set('kora.webhook_secret', 'test_webhook_secret');
         $app['config']->set('kora.encryption_key', '');
         $app['config']->set('kora.timeout', 30);
         $app['config']->set('kora.retry_attempts', 0);
