@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Kora\Laravel\Tests\Feature;
 
+use Illuminate\Support\Facades\Event;
+use Kora\Laravel\Events\KoraWebhookReceived;
 use Kora\Laravel\Tests\TestCase;
 use PHPUnit\Framework\Attributes\Test;
 
@@ -40,8 +42,10 @@ final class VerifyKoraWebhookTest extends TestCase
     }
 
     #[Test]
-    public function invalid_signature_returns_401(): void
+    public function invalid_signature_is_acknowledged(): void
     {
+        Event::fake();
+
         $payload = json_encode(['event' => 'charge.success', 'data' => ['reference' => 'ref_001']], JSON_THROW_ON_ERROR);
 
         $response = $this->call('POST', config('kora.webhook_path'), [], [], [], [
@@ -49,22 +53,23 @@ final class VerifyKoraWebhookTest extends TestCase
             'CONTENT_TYPE'             => 'application/json',
         ], $payload);
 
-        $response->assertStatus(401);
+        $response->assertOk()->assertJson(['received' => false]);
+        Event::assertNotDispatched(KoraWebhookReceived::class);
     }
 
     #[Test]
     public function route_is_not_subject_to_csrf(): void
     {
-        // 401 = reached VerifyKoraWebhook; 419 would mean CSRF fired first
+        // A 200 acknowledgement confirms CSRF did not intercept the webhook route.
         $response = $this->call('POST', config('kora.webhook_path'), [], [], [], [
             'CONTENT_TYPE' => 'application/json',
         ], '{}');
 
-        $response->assertStatus(401);
+        $response->assertOk()->assertJson(['received' => false]);
     }
 
     #[Test]
-    public function missing_signature_returns_401(): void
+    public function missing_signature_is_acknowledged(): void
     {
         $payload = json_encode(['event' => 'charge.success', 'data' => ['reference' => 'ref_001']], JSON_THROW_ON_ERROR);
 
@@ -72,7 +77,7 @@ final class VerifyKoraWebhookTest extends TestCase
             'CONTENT_TYPE' => 'application/json',
         ], $payload);
 
-        $response->assertStatus(401);
+        $response->assertOk()->assertJson(['received' => false]);
     }
 
 }

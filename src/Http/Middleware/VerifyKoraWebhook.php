@@ -19,7 +19,7 @@ final class VerifyKoraWebhook
         $raw       = $request->getContent();
 
         if (!$this->kora->webhooks()->verify($raw, $signature)) {
-            abort(401, 'Invalid webhook signature.');
+            return response()->json(['received' => false]);
         }
 
         return $next($request);

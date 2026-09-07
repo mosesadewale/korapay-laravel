@@ -44,7 +44,12 @@ return [
     |--------------------------------------------------------------------------
     */
 
-    'timeout'        => (float) env('KORA_TIMEOUT', 30),
-    'retry_attempts' => (int) env('KORA_RETRY_ATTEMPTS', 3),
+    'timeout'             => (float) env('KORA_TIMEOUT', 30),
+    'connect_timeout'    => (float) env('KORA_CONNECT_TIMEOUT', 10),
+    'retry_attempts'     => (int) env('KORA_RETRY_ATTEMPTS', 3),
+    'retry_unsafe_methods' => filter_var(
+        env('KORA_RETRY_UNSAFE_METHODS', false),
+        FILTER_VALIDATE_BOOLEAN,
+    ),
 
 ];

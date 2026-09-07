@@ -30,6 +30,11 @@ class KoraServiceProvider extends ServiceProvider
                 environment:    $environment,
                 timeout:        (float) $config['timeout'],
                 retryAttempts:  (int)   $config['retry_attempts'],
+                connectTimeout: (float) ($config['connect_timeout'] ?? 10),
+                retryUnsafeMethods: filter_var(
+                    $config['retry_unsafe_methods'] ?? false,
+                    FILTER_VALIDATE_BOOLEAN,
+                ),
                 logger:         $logger,
             );
         });

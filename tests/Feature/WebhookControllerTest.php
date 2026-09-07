@@ -71,4 +71,5 @@ final class WebhookControllerTest extends TestCase
     {
         $this->webhook('charge.success')->assertJson(['received' => true]);
     }
+
 }

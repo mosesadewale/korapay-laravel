@@ -19,8 +19,8 @@ final class KoraWebhookController extends Controller
     {
         try {
             $event = $this->kora->webhooks()->parse($request->getContent());
-        } catch (WebhookException $e) {
-            return response()->json(['error' => $e->getMessage()], 400);
+        } catch (WebhookException) {
+            return response()->json(['received' => false]);
         }
 
         event(new KoraWebhookReceived($event));

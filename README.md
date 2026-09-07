@@ -5,8 +5,8 @@ Laravel integration for the [Kora PHP SDK](https://github.com/mosesadewale/kora-
 ## Requirements
 
 - PHP 8.2+
-- Laravel 10, 11, 12, or 13
-- [mosesadewale/kora-php](https://github.com/mosesadewale/kora-php) ^2.0
+- Laravel 12 or 13; Laravel 11 is available for legacy applications but is security-EOL upstream
+- [mosesadewale/kora-php](https://github.com/mosesadewale/kora-php) ^3.0
 
 ## Installation
 
@@ -29,9 +29,15 @@ Then add to your `.env`:
 ```env
 KORA_SECRET_KEY=sk_live_...
 KORA_ENCRYPTION_KEY=...        # required for card payments (32 bytes)
+KORA_TIMEOUT=30
+KORA_CONNECT_TIMEOUT=10
+KORA_RETRY_ATTEMPTS=3
+KORA_RETRY_UNSAFE_METHODS=false # keep false unless you have an idempotency plan
 ```
 
 `KORA_ENVIRONMENT` is optional. When omitted, the package infers the environment from `KORA_SECRET_KEY`.
+
+The adapter forwards payment payloads to `kora-php`. The core SDK accepts positive integer, finite float, or decimal-string amounts with no more than two fractional digits, and validates them before sending. Fields documented by Kora as `Number` are sent as JSON numbers, so JSON may serialize `5000.50` as `5000.5`; the adapter does not promise a literal two-decimal JSON token. Use decimal strings at your application boundary and avoid floating-point arithmetic for ledger calculations.
 
 Full config reference (`config/kora.php`):
 
@@ -43,23 +49,28 @@ return [
     'webhook_path'           => env('KORA_WEBHOOK_PATH', 'webhooks/kora'),
     'register_webhook_route' => env('KORA_REGISTER_ROUTE', false),
     'timeout'                => (float) env('KORA_TIMEOUT', 30),
+    'connect_timeout'        => (float) env('KORA_CONNECT_TIMEOUT', 10),
     'retry_attempts'         => (int)   env('KORA_RETRY_ATTEMPTS', 3),
+    'retry_unsafe_methods'   => filter_var(env('KORA_RETRY_UNSAFE_METHODS', false), FILTER_VALIDATE_BOOLEAN),
 ];
 ```
 
-If you want to be explicit, set `KORA_ENVIRONMENT=live` or `KORA_ENVIRONMENT=sandbox`. A mismatch with the key prefix throws `InvalidArgumentException` at boot time.
+`retry_attempts` defaults to three attempts for safe read methods. `retry_unsafe_methods` defaults to `false`, so money-moving POST requests are not retried automatically. Keep it disabled unless Kora has confirmed an idempotency and reconciliation strategy for your account. An uncertain charge, payout, or refund should be verified by its reference before any manual retry or fulfilment.
+
+If you want to be explicit, set `KORA_ENVIRONMENT=live` or `KORA_ENVIRONMENT=sandbox`. A mismatch with the key prefix throws `InvalidArgumentException` when the lazily registered Kora client is first resolved.
 
 ## Usage
 
 Use the `Kora` facade anywhere in your application:
 
 ```php
+use Illuminate\Support\Str;
 use Kora\Laravel\Facades\Kora;
 
-// Initialize a charge
-$charge = Kora::charges()->charge([
-    'reference'    => 'ref_' . uniqid(),
-    'amount'       => 5000,
+// Initialize a hosted Checkout Redirect charge
+$charge = Kora::charges()->checkout([
+    'reference'    => 'order_' . Str::uuid(),
+    'amount'       => '5000.00',
     'currency'     => 'NGN',
     'customer'     => ['email' => 'user@example.com', 'name' => 'Ada Okonkwo'],
     'redirect_url' => 'https://yourapp.com/callback',
@@ -146,7 +157,7 @@ Route::post('webhooks/kora', function (Request $request) {
     $signature = $request->headers->get('x-korapay-signature') ?? '';
 
     if (!Kora::webhooks()->verify($raw, $signature)) {
-        abort(401);
+        return response()->json(['received' => false]);
     }
 
     $event = Kora::webhooks()->parse($raw);
@@ -154,6 +165,8 @@ Route::post('webhooks/kora', function (Request $request) {
     return response()->json(['received' => true]);
 });
 ```
+
+The built-in receiver acknowledges invalid signatures and malformed payloads with HTTP 200 and `received: false`, without dispatching an event. This prevents repeated provider delivery attempts while ensuring untrusted payloads are ignored; monitor these responses in your application logs.
 
 ## Error handling
 
@@ -183,28 +196,23 @@ try {
 
 ## Testing
 
-Bind a mock against `KoraClientInterface` in your test — no network calls, no real credentials:
+Keep Kora behind an application-owned payment interface and mock that narrow
+boundary in domain tests. SDK resource classes are final and are not mock seams.
+For SDK transport contract tests, inject a recording `HttpClientInterface`
+through the core SDK so no network calls or real credentials are involved.
 
 ```php
-use Kora\Sdk\Contracts\KoraClientInterface;
 use Kora\Sdk\DTOs\ChargeResponse;
-use Kora\Sdk\Resources\ChargesResource;
 
-$charges = $this->createMock(ChargesResource::class);
-$charges->method('charge')->willReturn(ChargeResponse::fromArray([
+$charge = ChargeResponse::fromArray([
     'reference'    => 'ref_001',
     'status'       => 'pending',
-    'amount'       => 5000,
+    'amount'       => '5000.00',
     'currency'     => 'NGN',
     'checkout_url' => 'https://pay.korahq.com/checkout/ref_001',
-]));
+]);
 
-$kora = $this->createMock(KoraClientInterface::class);
-$kora->method('charges')->willReturn($charges);
-
-$this->app->instance(KoraClientInterface::class, $kora);
-
-// Kora facade and injected KoraClientInterface now use the mock
+// Return this value from your application-owned payment gateway fake.
 ```
 
 For webhook controller tests, use `Event::fake()` and post a signed payload:
